@@ -1,0 +1,424 @@
+﻿@page "/"
+@using DataReconciliationEngine.Application.DTOs
+@using DataReconciliationEngine.Application.Interfaces
+@inject IRunQueryService QueryService
+@inject IComparisonEngine ComparisonEngine
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject NavigationManager Nav
+
+<PageTitle>Dashboard</PageTitle>
+
+@* ── Hero Header ──────────────────────────────────────────── *@
+<MudStack Spacing="1" Class="mb-5">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+        <MudIcon Icon="@Icons.Material.Filled.Dashboard"
+                 Color="Color.Primary"
+                 Size="Size.Large" />
+        <MudText Typo="Typo.h4">Dashboard</MudText>
+    </MudStack>
+    <MudText Typo="Typo.body2" Color="Color.Secondary">
+        Select a configuration, run a comparison, and review results across your data sources.
+    </MudText>
+</MudStack>
+
+@if (!_initialized)
+{
+    @* ── Loading skeleton ─────────────────────────────────── *@
+    <MudPaper Class="pa-4 mb-4" Elevation="1">
+        <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="56px" Width="300px" />
+    </MudPaper>
+    <MudGrid>
+        @for (var i = 0; i < 4; i++)
+        {
+            <MudItem xs="12" sm="6" md="3">
+                <MudPaper Class="pa-4" Elevation="1">
+                    <MudSkeleton SkeletonType="SkeletonType.Circle" Width="40px" Height="40px" Class="mb-2 mx-auto" />
+                    <MudSkeleton Width="60%" Class="mx-auto mb-1" />
+                    <MudSkeleton Width="40%" Class="mx-auto" />
+                </MudPaper>
+            </MudItem>
+        }
+    </MudGrid>
+}
+else
+{
+    @* ── Toolbar: Config selector + Run button ────────────── *@
+    <MudPaper Class="pa-4 mb-5" Elevation="1">
+        <MudStack Row="true"
+                  AlignItems="AlignItems.Center"
+                  Spacing="3"
+                  Wrap="Wrap.Wrap">
+            <MudSelect T="int?"
+                       Label="Comparison Configuration"
+                       Value="_selectedConfigId"
+                       ValueChanged="OnConfigSelectedAsync"
+                       Variant="Variant.Outlined"
+                       AnchorOrigin="Origin.BottomCenter"
+                       Disabled="_isRunning"
+                       Style="min-width: 280px; max-width: 360px;"
+                       Placeholder="Choose a configuration…"
+                       Clearable="true">
+                @foreach (var config in _configs)
+                {
+                    <MudSelectItem T="int?" Value="@config.Id">
+                        @config.ComparisonName
+                    </MudSelectItem>
+                }
+            </MudSelect>
+
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.PlayArrow"
+                       Disabled="@(_selectedConfigId is null || _isRunning)"
+                       OnClick="RunComparisonAsync"
+                       Size="Size.Large">
+                @if (_isRunning)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                    @:Running…
+                }
+                else
+                {
+                    @:Run Comparison
+                }
+            </MudButton>
+
+            @if (_configs.Count == 0)
+            {
+                <MudButton Variant="Variant.Text"
+                           Color="Color.Secondary"
+                           StartIcon="@Icons.Material.Filled.Add"
+                           OnClick="@(() => Nav.NavigateTo("/configs"))"
+                           Size="Size.Small">
+                    Create Configuration
+                </MudButton>
+            }
+        </MudStack>
+    </MudPaper>
+
+    @* ── Latest Run KPI Cards ─────────────────────────────── *@
+    @if (_latestRun is not null)
+    {
+        <MudText Typo="Typo.subtitle2" Color="Color.Secondary" Class="mb-2">
+            Latest Run — #@_latestRun.RunId · @_latestRun.RunDate.ToLocalTime().ToString("g")
+        </MudText>
+
+        <MudGrid Class="mb-4">
+            <MudItem xs="6" sm="6" md="3">
+                <MudPaper Class="pa-4" Elevation="1" Style="border-left: 4px solid var(--mud-palette-primary);">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                        <MudAvatar Color="Color.Primary" Variant="Variant.Outlined" Size="Size.Large">
+                            <MudIcon Icon="@Icons.Material.Filled.CompareArrows" />
+                        </MudAvatar>
+                        <MudStack Spacing="0">
+                            <MudText Typo="Typo.h5">@_latestRun.TotalRecords.ToString("N0")</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Matched Keys</MudText>
+                        </MudStack>
+                    </MudStack>
+                </MudPaper>
+            </MudItem>
+
+            <MudItem xs="6" sm="6" md="3">
+                <MudPaper Class="pa-4" Elevation="1" Style="border-left: 4px solid var(--mud-palette-warning);">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                        <MudAvatar Color="Color.Warning" Variant="Variant.Outlined" Size="Size.Large">
+                            <MudIcon Icon="@Icons.Material.Filled.Warning" />
+                        </MudAvatar>
+                        <MudStack Spacing="0">
+                            <MudText Typo="Typo.h5" Color="@(_latestRun.TotalMismatches > 0 ? Color.Warning : Color.Default)">
+                                @_latestRun.TotalMismatches.ToString("N0")
+                            </MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Mismatches</MudText>
+                        </MudStack>
+                    </MudStack>
+                </MudPaper>
+            </MudItem>
+
+            <MudItem xs="6" sm="6" md="3">
+                <MudPaper Class="pa-4" Elevation="1" Style="border-left: 4px solid var(--mud-palette-error);">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                        <MudAvatar Color="Color.Error" Variant="Variant.Outlined" Size="Size.Large">
+                            <MudIcon Icon="@Icons.Material.Filled.RemoveCircle" />
+                        </MudAvatar>
+                        <MudStack Spacing="0">
+                            <MudText Typo="Typo.h5" Color="@(_latestRun.TotalMissingInA > 0 ? Color.Error : Color.Default)">
+                                @_latestRun.TotalMissingInA.ToString("N0")
+                            </MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Missing in A</MudText>
+                        </MudStack>
+                    </MudStack>
+                </MudPaper>
+            </MudItem>
+
+            <MudItem xs="6" sm="6" md="3">
+                <MudPaper Class="pa-4" Elevation="1" Style="border-left: 4px solid var(--mud-palette-error);">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                        <MudAvatar Color="Color.Error" Variant="Variant.Outlined" Size="Size.Large">
+                            <MudIcon Icon="@Icons.Material.Filled.RemoveCircle" />
+                        </MudAvatar>
+                        <MudStack Spacing="0">
+                            <MudText Typo="Typo.h5" Color="@(_latestRun.TotalMissingInB > 0 ? Color.Error : Color.Default)">
+                                @_latestRun.TotalMissingInB.ToString("N0")
+                            </MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Missing in B</MudText>
+                        </MudStack>
+                    </MudStack>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+
+        @* Quick action *@
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.TableChart"
+                   Class="mb-5"
+                   OnClick="@(() => Nav.NavigateTo($"/results/{_latestRun.RunId}"))">
+            View Results for Run #@_latestRun.RunId
+        </MudButton>
+    }
+
+    @* ── Run History ──────────────────────────────────────── *@
+    @if (_runs.Count > 0)
+    {
+        <MudPaper Elevation="1">
+            @* Card header *@
+            <MudStack Row="true"
+                      AlignItems="AlignItems.Center"
+                      Justify="Justify.SpaceBetween"
+                      Class="pa-4 pb-0">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                    <MudIcon Icon="@Icons.Material.Filled.History"
+                             Color="Color.Secondary"
+                             Size="Size.Small" />
+                    <MudText Typo="Typo.h6">Run History</MudText>
+                </MudStack>
+                <MudChip T="string"
+                         Size="Size.Small"
+                         Variant="Variant.Text"
+                         Color="Color.Default">
+                    @_runs.Count runs
+                </MudChip>
+            </MudStack>
+
+            <MudTable Items="_runs"
+                      Dense="true"
+                      Hover="true"
+                      Striped="true"
+                      Elevation="0"
+                      Breakpoint="Breakpoint.Sm"
+                      Class="rounded-0">
+                <HeaderContent>
+                    <MudTh>Run</MudTh>
+                    <MudTh>Date</MudTh>
+                    <MudTh Style="text-align: right;">Matched</MudTh>
+                    <MudTh Style="text-align: right;">Mismatches</MudTh>
+                    <MudTh Style="text-align: right;">Missing A</MudTh>
+                    <MudTh Style="text-align: right;">Missing B</MudTh>
+                    <MudTh Style="text-align: center;">Actions</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Run">
+                        <MudChip T="string"
+                                 Size="Size.Small"
+                                 Variant="Variant.Outlined"
+                                 Color="Color.Primary">
+                            #@context.RunId
+                        </MudChip>
+                    </MudTd>
+                    <MudTd DataLabel="Date">
+                        <MudText Typo="Typo.body2">
+                            @context.RunDate.ToLocalTime().ToString("g")
+                        </MudText>
+                    </MudTd>
+                    <MudTd DataLabel="Matched" Style="text-align: right;">
+                        @context.TotalRecords.ToString("N0")
+                    </MudTd>
+                    <MudTd DataLabel="Mismatches" Style="text-align: right;">
+                        @if (context.TotalMismatches > 0)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Filled">
+                                @context.TotalMismatches.ToString("N0")
+                            </MudChip>
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">0</MudText>
+                        }
+                    </MudTd>
+                    <MudTd DataLabel="Missing A" Style="text-align: right;">
+                        @if (context.TotalMissingInA > 0)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Error" Variant="Variant.Filled">
+                                @context.TotalMissingInA.ToString("N0")
+                            </MudChip>
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">0</MudText>
+                        }
+                    </MudTd>
+                    <MudTd DataLabel="Missing B" Style="text-align: right;">
+                        @if (context.TotalMissingInB > 0)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Error" Variant="Variant.Filled">
+                                @context.TotalMissingInB.ToString("N0")
+                            </MudChip>
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">0</MudText>
+                        }
+                    </MudTd>
+                    <MudTd Style="text-align: center;">
+                        <MudStack Row="true" Spacing="0" Justify="Justify.Center">
+                            <MudTooltip Text="View Results">
+                                <MudIconButton Icon="@Icons.Material.Filled.Visibility"
+                                               Size="Size.Small"
+                                               Color="Color.Primary"
+                                               OnClick="@(() => Nav.NavigateTo($"/results/{context.RunId}"))" />
+                            </MudTooltip>
+                            <MudTooltip Text="Delete Run">
+                                <MudIconButton Icon="@Icons.Material.Filled.DeleteOutline"
+                                               Size="Size.Small"
+                                               Color="Color.Error"
+                                               OnClick="@(() => ConfirmDeleteAsync(context))" />
+                            </MudTooltip>
+                        </MudStack>
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        </MudPaper>
+    }
+    else if (_selectedConfigId is not null && !_isRunning)
+    {
+        @* ── Empty state ──────────────────────────────────── *@
+        <MudPaper Class="pa-8 text-center" Elevation="1">
+            <MudIcon Icon="@Icons.Material.Filled.PlayCircleOutline"
+                     Color="Color.Secondary"
+                     Size="Size.Large"
+                     Style="font-size: 4rem; opacity: 0.4;" />
+            <MudText Typo="Typo.h6" Class="mt-3" Color="Color.Secondary">
+                No runs yet
+            </MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+                Click "Run Comparison" above to compare your data sources.
+            </MudText>
+            <MudButton Variant="Variant.Outlined"
+                       Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.PlayArrow"
+                       Disabled="_isRunning"
+                       OnClick="RunComparisonAsync">
+                Run Comparison
+            </MudButton>
+        </MudPaper>
+    }
+    else if (_selectedConfigId is null)
+    {
+        @* ── No config selected ───────────────────────────── *@
+        <MudPaper Class="pa-8 text-center" Elevation="1">
+            <MudIcon Icon="@Icons.Material.Filled.TouchApp"
+                     Color="Color.Secondary"
+                     Size="Size.Large"
+                     Style="font-size: 4rem; opacity: 0.4;" />
+            <MudText Typo="Typo.h6" Class="mt-3" Color="Color.Secondary">
+                Select a configuration
+            </MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                Choose a comparison configuration from the dropdown above to get started.
+            </MudText>
+        </MudPaper>
+    }
+}
+
+@code {
+    private List<ConfigSummaryDto> _configs = [];
+    private List<RunSummaryDto> _runs = [];
+    private RunSummaryDto? _latestRun;
+    private int? _selectedConfigId;
+    private bool _isRunning;
+    private bool _initialized;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _configs = await QueryService.GetActiveConfigurationsAsync();
+
+        if (_configs.Count == 1)
+        {
+            _selectedConfigId = _configs[0].Id;
+            await LoadRunsAsync();
+        }
+
+        _initialized = true;
+    }
+
+    private async Task OnConfigSelectedAsync(int? configId)
+    {
+        _selectedConfigId = configId;
+        await LoadRunsAsync();
+    }
+
+    private async Task LoadRunsAsync()
+    {
+        if (_selectedConfigId is null)
+        {
+            _runs = [];
+            _latestRun = null;
+            return;
+        }
+
+        _runs = await QueryService.GetLastRunsAsync(_selectedConfigId.Value);
+        _latestRun = _runs.FirstOrDefault();
+    }
+
+    private async Task RunComparisonAsync()
+    {
+        if (_selectedConfigId is null) return;
+
+        _isRunning = true;
+
+        try
+        {
+            var request = new RunComparisonRequest { ComparisonConfigId = _selectedConfigId.Value };
+            var summary = await ComparisonEngine.RunComparisonAsync(request);
+
+            Snackbar.Add(
+                $"Comparison complete! Run #{summary.RunId} — {summary.TotalMismatches:N0} mismatches, " +
+                $"{summary.TotalMissingInA:N0} missing in A, {summary.TotalMissingInB:N0} missing in B.",
+                Severity.Success);
+
+            await LoadRunsAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isRunning = false;
+        }
+    }
+
+    private async Task ConfirmDeleteAsync(RunSummaryDto run)
+    {
+        var result = await DialogService.ShowMessageBox(
+            "Delete Run",
+            $"Delete Run #{run.RunId} ({run.RunDate.ToLocalTime():g}) and all its results? This cannot be undone.",
+            yesText: "Delete",
+            cancelText: "Cancel");
+
+        if (result is true)
+        {
+            var deleted = await QueryService.DeleteRunAsync(run.RunId);
+            if (deleted)
+            {
+                Snackbar.Add($"Run #{run.RunId} deleted.", Severity.Success);
+                await LoadRunsAsync();
+            }
+            else
+            {
+                Snackbar.Add($"Run #{run.RunId} not found.", Severity.Warning);
+            }
+        }
+    }
+}

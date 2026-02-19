@@ -1,0 +1,614 @@
+﻿@page "/results/{RunId:int}"
+@using DataReconciliationEngine.Application.DTOs
+@using DataReconciliationEngine.Application.Interfaces
+@inject IRunQueryService QueryService
+@inject IResultExportService ExportService
+@inject ISnackbar Snackbar
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<PageTitle>Results — Run #@RunId</PageTitle>
+
+@* ── Header ───────────────────────────────────────────────── *@
+<MudStack Spacing="1" Class="mb-4">
+    <MudButton Variant="Variant.Text"
+               StartIcon="@Icons.Material.Filled.ArrowBack"
+               OnClick="@(() => Nav.NavigateTo("/"))"
+               Color="Color.Secondary"
+               Size="Size.Small"
+               Class="align-self-start">
+        Back to Dashboard
+    </MudButton>
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+        <MudIcon Icon="@Icons.Material.Filled.TableChart"
+                 Color="Color.Primary"
+                 Size="Size.Large" />
+        <MudText Typo="Typo.h4">Results — Run #@RunId</MudText>
+    </MudStack>
+</MudStack>
+
+@* ── Summary Bar ──────────────────────────────────────────── *@
+@if (_summary is not null)
+{
+    <MudPaper Class="pa-3 mb-4" Elevation="1" Style="border-left: 4px solid var(--mud-palette-primary);">
+        <MudStack Row="true"
+                  AlignItems="AlignItems.Center"
+                  Spacing="3"
+                  Wrap="Wrap.Wrap">
+            <MudStack Spacing="0">
+                <MudText Typo="Typo.subtitle1">@_summary.ComparisonName</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                    @_summary.RunDate.ToLocalTime().ToString("g")
+                </MudText>
+            </MudStack>
+
+            <MudDivider Vertical="true" FlexItem="true" Class="mx-1" />
+
+            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary"
+                     Icon="@Icons.Material.Filled.CompareArrows">
+                @_summary.TotalRecords.ToString("N0") matched
+            </MudChip>
+            <MudChip T="string" Size="Size.Small" Variant="Variant.Filled"
+                     Color="@(_summary.TotalMismatches > 0 ? Color.Warning : Color.Default)"
+                     Icon="@Icons.Material.Filled.Warning">
+                @_summary.TotalMismatches.ToString("N0") mismatches
+            </MudChip>
+            <MudChip T="string" Size="Size.Small" Variant="Variant.Filled"
+                     Color="@(_summary.TotalMissingInA > 0 ? Color.Error : Color.Default)"
+                     Icon="@Icons.Material.Filled.RemoveCircle">
+                @_summary.TotalMissingInA.ToString("N0") missing A
+            </MudChip>
+            <MudChip T="string" Size="Size.Small" Variant="Variant.Filled"
+                     Color="@(_summary.TotalMissingInB > 0 ? Color.Error : Color.Default)"
+                     Icon="@Icons.Material.Filled.RemoveCircle">
+                @_summary.TotalMissingInB.ToString("N0") missing B
+            </MudChip>
+        </MudStack>
+    </MudPaper>
+}
+
+@if (!_initialized)
+{
+    @* ── Loading skeleton ─────────────────────────────────── *@
+    <MudGrid Class="mb-4">
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudSkeleton Width="40%" Class="mb-3" />
+                <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="200px" />
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudSkeleton Width="40%" Class="mb-3" />
+                @for (var i = 0; i < 5; i++)
+                {
+                    <MudSkeleton Class="mb-2" />
+                }
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+    <MudPaper Class="pa-4" Elevation="1">
+        <MudSkeleton Width="30%" Class="mb-3" />
+        @for (var i = 0; i < 8; i++)
+        {
+            <MudSkeleton Class="mb-2" />
+        }
+    </MudPaper>
+}
+else
+{
+    @* ── Analytics ─────────────────────────────────────────── *@
+    @if (_topFields.Count > 0 || _topKeys.Count > 0)
+    {
+        <MudGrid Class="mb-4">
+            @* ── Top Mismatched Fields (Bar Chart) ────────────── *@
+            @if (_topFields.Count > 0)
+            {
+                <MudItem xs="12" md="6">
+                    <MudPaper Class="pa-4" Elevation="1" Style="height: 100%;">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-3">
+                            <MudIcon Icon="@Icons.Material.Filled.BarChart"
+                                     Color="Color.Warning"
+                                     Size="Size.Small" />
+                            <MudText Typo="Typo.h6">Top Mismatched Fields</MudText>
+                            <MudSpacer />
+                            <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Color="Color.Default">
+                                @_topFields.Count fields
+                            </MudChip>
+                        </MudStack>
+                        <MudChart ChartType="ChartType.Bar"
+                                  ChartSeries="@_fieldChartSeries"
+                                  XAxisLabels="@_fieldChartLabels"
+                                  Width="100%"
+                                  Height="250px"
+                                  ChartOptions="_chartOptions" />
+                    </MudPaper>
+                </MudItem>
+            }
+
+            @* ── Top Problematic Sites (Table) ────────────────── *@
+            @if (_topKeys.Count > 0)
+            {
+                <MudItem xs="12" md="6">
+                    <MudPaper Class="pa-4" Elevation="1" Style="height: 100%;">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-3">
+                            <MudIcon Icon="@Icons.Material.Filled.ErrorOutline"
+                                     Color="Color.Error"
+                                     Size="Size.Small" />
+                            <MudText Typo="Typo.h6">Top Problematic Sites</MudText>
+                            <MudSpacer />
+                            <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Color="Color.Default">
+                                @_topKeys.Count keys
+                            </MudChip>
+                        </MudStack>
+                        <MudSimpleTable Dense="true" Hover="true" Striped="true"
+                                        Style="max-height: 270px; overflow-y: auto;">
+                            <thead>
+                                <tr>
+                                    <th>Werfcode</th>
+                                    <th style="text-align: right;">Issues</th>
+                                    <th style="width: 44px;"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var key in _topKeys)
+                                {
+                                    <tr>
+                                        <td class="font-mono">@key.MatchKeyValue</td>
+                                        <td style="text-align: right;">
+                                            <MudChip T="string" Size="Size.Small"
+                                                     Color="@(key.Count >= 5 ? Color.Error : key.Count >= 2 ? Color.Warning : Color.Default)">
+                                                @key.Count
+                                            </MudChip>
+                                        </td>
+                                        <td>
+                                            <MudTooltip Text="Filter table to this key">
+                                                <MudIconButton Icon="@Icons.Material.Filled.FilterAlt"
+                                                               Size="Size.Small"
+                                                               Color="Color.Primary"
+                                                               OnClick="@(() => FilterByKeyAsync(key.MatchKeyValue))" />
+                                            </MudTooltip>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </MudSimpleTable>
+                    </MudPaper>
+                </MudItem>
+            }
+        </MudGrid>
+    }
+
+    @* ── Filters + Export Toolbar ──────────────────────────── *@
+    <MudPaper Class="pa-4 mb-4" Elevation="1">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-3">
+            <MudIcon Icon="@Icons.Material.Filled.FilterAlt" Color="Color.Secondary" Size="Size.Small" />
+            <MudText Typo="Typo.h6">Filters & Export</MudText>
+        </MudStack>
+
+        <MudGrid>
+            <MudItem xs="12" sm="4" md="3">
+                <MudTextField @bind-Value="_searchKey"
+                              Label="Search Key (Werfcode)"
+                              Variant="Variant.Outlined"
+                              Adornment="Adornment.Start"
+                              AdornmentIcon="@Icons.Material.Filled.Search"
+                              Immediate="true"
+                              DebounceInterval="400"
+                              OnDebounceIntervalElapsed="OnFilterChanged" />
+            </MudItem>
+            <MudItem xs="12" sm="4" md="3">
+                <MudSelect T="string"
+                           Label="Field Name"
+                           @bind-Value="_fieldName"
+                           Variant="Variant.Outlined"
+                           Clearable="true"
+                           AnchorOrigin="Origin.BottomCenter">
+                    @foreach (var f in _fieldNames)
+                    {
+                        <MudSelectItem T="string" Value="@f">@f</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="6" sm="2" md="2" Class="d-flex align-end">
+                <MudSwitch T="bool" @bind-Value="_onlyMissing"
+                           Label="Missing Only"
+                           Color="Color.Error" />
+            </MudItem>
+            <MudItem xs="6" sm="2" md="4" Class="d-flex align-end gap-2">
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.FilterAlt"
+                           OnClick="OnFilterChanged">
+                    Apply
+                </MudButton>
+                @if (HasActiveFilters)
+                {
+                    <MudButton Variant="Variant.Text"
+                               Color="Color.Secondary"
+                               StartIcon="@Icons.Material.Filled.ClearAll"
+                               OnClick="ClearFiltersAsync"
+                               Size="Size.Small">
+                        Clear
+                    </MudButton>
+                }
+            </MudItem>
+        </MudGrid>
+
+        @* ── Active filter chips ──────────────────────────── *@
+        @if (HasActiveFilters)
+        {
+            <MudStack Row="true" Spacing="1" Class="mt-3" Wrap="Wrap.Wrap" AlignItems="AlignItems.Center">
+                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mr-1">Active:</MudText>
+                @if (!string.IsNullOrWhiteSpace(_searchKey))
+                {
+                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary"
+                             OnClose="@(() => ClearFilterAsync("searchKey"))">
+                        Key: @_searchKey
+                    </MudChip>
+                }
+                @if (!string.IsNullOrWhiteSpace(_fieldName))
+                {
+                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Secondary"
+                             OnClose="@(() => ClearFilterAsync("fieldName"))">
+                        Field: @_fieldName
+                    </MudChip>
+                }
+                @if (_onlyMissing)
+                {
+                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Error"
+                             OnClose="@(() => ClearFilterAsync("onlyMissing"))">
+                        Missing Only
+                    </MudChip>
+                }
+            </MudStack>
+        }
+
+        @* ── Export buttons ───────────────────────────────── *@
+        <MudDivider Class="my-3" />
+        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap">
+            <MudIcon Icon="@Icons.Material.Filled.Download" Color="Color.Secondary" Size="Size.Small" />
+            <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Export:</MudText>
+            <MudButton Variant="Variant.Outlined" Size="Size.Small"
+                       StartIcon="@Icons.Material.Filled.Download"
+                       Disabled="_exporting"
+                       OnClick="@(() => ExportAsync("All", false, false))">
+                All
+            </MudButton>
+            <MudButton Variant="Variant.Outlined" Size="Size.Small"
+                       Color="Color.Warning"
+                       StartIcon="@Icons.Material.Filled.Download"
+                       Disabled="_exporting"
+                       OnClick="@(() => ExportAsync("Mismatches", false, true))">
+                Mismatches
+            </MudButton>
+            <MudButton Variant="Variant.Outlined" Size="Size.Small"
+                       Color="Color.Error"
+                       StartIcon="@Icons.Material.Filled.Download"
+                       Disabled="_exporting"
+                       OnClick="@(() => ExportAsync("Missing", true, false))">
+                Missing
+            </MudButton>
+            <MudButton Variant="Variant.Filled" Size="Size.Small"
+                       Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.FilterAlt"
+                       Disabled="_exporting"
+                       OnClick="ExportFilteredAsync">
+                Current Filters
+            </MudButton>
+            @if (_exporting)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+            }
+        </MudStack>
+    </MudPaper>
+
+    @* ── Results Table ────────────────────────────────────── *@
+    <MudPaper Elevation="1">
+        <MudStack Row="true" AlignItems="AlignItems.Center"
+                  Justify="Justify.SpaceBetween" Class="pa-4 pb-0">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                <MudIcon Icon="@Icons.Material.Filled.List" Color="Color.Secondary" Size="Size.Small" />
+                <MudText Typo="Typo.h6">Comparison Results</MudText>
+            </MudStack>
+        </MudStack>
+
+        <MudTable @ref="_table"
+                  T="ResultPageDto"
+                  ServerData="LoadServerData"
+                  Dense="true"
+                  Hover="true"
+                  Striped="true"
+                  Elevation="0"
+                  RowsPerPage="25"
+                  CurrentPage="0"
+                  Breakpoint="Breakpoint.Sm"
+                  Class="rounded-0">
+            <HeaderContent>
+                <MudTh Style="min-width: 140px;">
+                    <MudTableSortLabel T="ResultPageDto" SortLabel="MatchKeyValue">Key</MudTableSortLabel>
+                </MudTh>
+                <MudTh Style="min-width: 140px;">
+                    <MudTableSortLabel T="ResultPageDto" SortLabel="LogicalFieldName">Field</MudTableSortLabel>
+                </MudTh>
+                <MudTh Style="min-width: 160px;">System A</MudTh>
+                <MudTh Style="min-width: 160px;">System B</MudTh>
+                <MudTh Style="width: 80px; text-align: center;">
+                    <MudTableSortLabel T="ResultPageDto" SortLabel="IsMatch">Match</MudTableSortLabel>
+                </MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Key">
+                    <MudText Typo="Typo.body2" Class="font-mono">@context.MatchKeyValue</MudText>
+                </MudTd>
+                <MudTd DataLabel="Field">
+                    @if (context.LogicalFieldName == "_MISSING_")
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Error" Variant="Variant.Filled">
+                            MISSING
+                        </MudChip>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.body2">@context.LogicalFieldName</MudText>
+                    }
+                </MudTd>
+                <MudTd DataLabel="System A">
+                    @if (!context.ExistsInSystemA)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Error" Variant="Variant.Outlined"
+                                 Icon="@Icons.Material.Filled.Cancel">
+                            not found
+                        </MudChip>
+                    }
+                    else if (!context.IsMatch && context.ExistsInSystemB)
+                    {
+                        <MudText Typo="Typo.body2" Color="Color.Error">
+                            @(context.ValueSystemA ?? "—")
+                        </MudText>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.body2">@(context.ValueSystemA ?? "—")</MudText>
+                    }
+                </MudTd>
+                <MudTd DataLabel="System B">
+                    @if (!context.ExistsInSystemB)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Error" Variant="Variant.Outlined"
+                                 Icon="@Icons.Material.Filled.Cancel">
+                            not found
+                        </MudChip>
+                    }
+                    else if (!context.IsMatch && context.ExistsInSystemA)
+                    {
+                        <MudText Typo="Typo.body2" Color="Color.Warning" Style="font-weight: 500;">
+                            @(context.ValueSystemB ?? "—")
+                        </MudText>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.body2">@(context.ValueSystemB ?? "—")</MudText>
+                    }
+                </MudTd>
+                <MudTd DataLabel="Match" Style="text-align: center;">
+                    @if (context.IsMatch)
+                    {
+                        <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Size="Size.Small" />
+                    }
+                    else
+                    {
+                        <MudIcon Icon="@Icons.Material.Filled.Cancel" Color="Color.Error" Size="Size.Small" />
+                    }
+                </MudTd>
+            </RowTemplate>
+            <PagerContent>
+                <MudTablePager PageSizeOptions="new[] { 10, 25, 50, 100 }" />
+            </PagerContent>
+            <NoRecordsContent>
+                <div class="pa-8 text-center">
+                    <MudIcon Icon="@Icons.Material.Filled.SearchOff"
+                             Color="Color.Secondary"
+                             Style="font-size: 3rem; opacity: 0.4;" />
+                    <MudText Typo="Typo.h6" Class="mt-2" Color="Color.Secondary">
+                        No results found
+                    </MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+                        Try adjusting your filters or clearing them.
+                    </MudText>
+                    @if (HasActiveFilters)
+                    {
+                        <MudButton Variant="Variant.Outlined"
+                                   Color="Color.Primary"
+                                   StartIcon="@Icons.Material.Filled.ClearAll"
+                                   OnClick="ClearFiltersAsync">
+                            Clear All Filters
+                        </MudButton>
+                    }
+                </div>
+            </NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+}
+
+@code {
+    [Parameter]
+    public int RunId { get; set; }
+
+    private MudTable<ResultPageDto> _table = null!;
+    private RunSummaryDto? _summary;
+    private List<string> _fieldNames = [];
+    private bool _initialized;
+
+    // Filters
+    private string? _searchKey;
+    private string? _fieldName;
+    private bool _onlyMissing;
+
+    // Export
+    private bool _exporting;
+
+    // Analytics
+    private List<FieldMismatchStatDto> _topFields = [];
+    private List<KeyMismatchStatDto> _topKeys = [];
+    private List<ChartSeries> _fieldChartSeries = [];
+    private string[] _fieldChartLabels = [];
+    private readonly ChartOptions _chartOptions = new()
+    {
+        YAxisTicks = 1,
+        MaxNumYAxisTicks = 10
+    };
+
+    /// <summary>Whether any filter is currently applied.</summary>
+    private bool HasActiveFilters =>
+        !string.IsNullOrWhiteSpace(_searchKey) ||
+        !string.IsNullOrWhiteSpace(_fieldName) ||
+        _onlyMissing;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _summary = await QueryService.GetRunSummaryAsync(RunId);
+        _fieldNames = await QueryService.GetFieldNamesForRunAsync(RunId);
+
+        // Analytics
+        _topFields = await QueryService.GetTopMismatchFieldsAsync(RunId);
+        _topKeys = await QueryService.GetTopMismatchKeysAsync(RunId);
+        BuildFieldChart();
+
+        _initialized = true;
+    }
+
+    private void BuildFieldChart()
+    {
+        if (_topFields.Count == 0)
+        {
+            _fieldChartLabels = [];
+            _fieldChartSeries = [];
+            return;
+        }
+
+        _fieldChartLabels = _topFields.Select(f => f.LogicalFieldName).ToArray();
+        _fieldChartSeries =
+        [
+            new ChartSeries
+            {
+                Name = "Mismatches",
+                Data = _topFields.Select(f => (double)f.Count).ToArray()
+            }
+        ];
+    }
+
+    private async Task FilterByKeyAsync(string matchKeyValue)
+    {
+        _searchKey = matchKeyValue;
+        _onlyMissing = false;
+        StateHasChanged();
+        await _table.ReloadServerData();
+        Snackbar.Add($"Filtered to \"{matchKeyValue}\"", Severity.Info);
+    }
+
+    /// <summary>Clears all filters and reloads.</summary>
+    private async Task ClearFiltersAsync()
+    {
+        _searchKey = null;
+        _fieldName = null;
+        _onlyMissing = false;
+        StateHasChanged();
+        await _table.ReloadServerData();
+    }
+
+    /// <summary>Clears a single filter by name and reloads.</summary>
+    private async Task ClearFilterAsync(string filterName)
+    {
+        switch (filterName)
+        {
+            case "searchKey": _searchKey = null; break;
+            case "fieldName": _fieldName = null; break;
+            case "onlyMissing": _onlyMissing = false; break;
+        }
+        StateHasChanged();
+        await _table.ReloadServerData();
+    }
+
+    private async Task<TableData<ResultPageDto>> LoadServerData(TableState state, CancellationToken ct)
+    {
+        var filter = new ResultFilterDto
+        {
+            RunId = RunId,
+            SearchKey = _searchKey,
+            FieldName = _fieldName,
+            OnlyMissing = _onlyMissing,
+            OnlyMismatches = !_onlyMissing,
+            Page = state.Page,
+            PageSize = state.PageSize,
+            SortField = state.SortLabel,
+            SortDescending = state.SortDirection == SortDirection.Descending
+        };
+
+        var result = await QueryService.GetResultsPageAsync(filter, ct);
+
+        return new TableData<ResultPageDto>
+        {
+            Items = result.Items,
+            TotalItems = result.TotalCount
+        };
+    }
+
+    private async Task OnFilterChanged()
+    {
+        await _table.ReloadServerData();
+    }
+
+    private async Task ExportAsync(string label, bool onlyMissing, bool onlyMismatches)
+    {
+        var request = new ExportRequestDto
+        {
+            RunId = RunId,
+            OnlyMissing = onlyMissing,
+            OnlyMismatches = onlyMismatches,
+            FileLabel = label
+        };
+        await DownloadExportAsync(request);
+    }
+
+    private async Task ExportFilteredAsync()
+    {
+        var request = new ExportRequestDto
+        {
+            RunId = RunId,
+            SearchKey = _searchKey,
+            FieldName = _fieldName,
+            OnlyMissing = _onlyMissing,
+            OnlyMismatches = !_onlyMissing,
+            FileLabel = "Filtered"
+        };
+        await DownloadExportAsync(request);
+    }
+
+    private async Task DownloadExportAsync(ExportRequestDto request)
+    {
+        _exporting = true;
+        StateHasChanged();
+
+        try
+        {
+            Snackbar.Add("Preparing export…", Severity.Info);
+
+            var file = await ExportService.ExportCsvAsync(request);
+            var base64 = Convert.ToBase64String(file.Content);
+
+            await JS.InvokeVoidAsync("downloadFile", file.FileName, file.ContentType, base64);
+
+            Snackbar.Add($"Downloaded {file.FileName}", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Export failed: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _exporting = false;
+            StateHasChanged();
+        }
+    }
+}

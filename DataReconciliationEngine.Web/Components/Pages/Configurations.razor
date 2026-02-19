@@ -1,0 +1,261 @@
+﻿@page "/configs"
+@using DataReconciliationEngine.Application.DTOs
+@using DataReconciliationEngine.Application.Interfaces
+@inject IComparisonConfigService ConfigService
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject NavigationManager Nav
+
+<PageTitle>Configurations</PageTitle>
+
+@* ── Hero Header ──────────────────────────────────────────── *@
+<MudStack Spacing="1" Class="mb-5">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+        <MudIcon Icon="@Icons.Material.Filled.Tune"
+                 Color="Color.Secondary"
+                 Size="Size.Large" />
+        <MudText Typo="Typo.h4">Configurations</MudText>
+    </MudStack>
+    <MudText Typo="Typo.body2" Color="Color.Secondary">
+        Manage comparison configurations and their field mappings.
+    </MudText>
+</MudStack>
+
+@if (_loading)
+{
+    <MudPaper Class="pa-4" Elevation="1">
+        @for (var i = 0; i < 3; i++)
+        {
+            <MudSkeleton Class="mb-3" Height="48px" />
+        }
+    </MudPaper>
+}
+else if (_configs.Count == 0)
+{
+    @* ── Empty state ──────────────────────────────────────── *@
+    <MudPaper Class="pa-8 text-center" Elevation="1">
+        <MudIcon Icon="@Icons.Material.Filled.SettingsSuggest"
+                 Color="Color.Secondary"
+                 Style="font-size: 4rem; opacity: 0.4;" />
+        <MudText Typo="Typo.h6" Class="mt-3" Color="Color.Secondary">
+            No configurations yet
+        </MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+            Create a comparison configuration to define which tables and columns to compare.
+        </MudText>
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.Add"
+                   OnClick="OpenCreateDialogAsync">
+            New Configuration
+        </MudButton>
+    </MudPaper>
+}
+else
+{
+    @* ── Table card ────────────────────────────────────────── *@
+    <MudPaper Elevation="1">
+        <MudStack Row="true" AlignItems="AlignItems.Center"
+                  Justify="Justify.SpaceBetween" Class="pa-4 pb-0">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                <MudIcon Icon="@Icons.Material.Filled.Storage" Color="Color.Secondary" Size="Size.Small" />
+                <MudText Typo="Typo.h6">All Configurations</MudText>
+                <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Color="Color.Default">
+                    @_configs.Count
+                </MudChip>
+            </MudStack>
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.Add"
+                       Size="Size.Small"
+                       OnClick="OpenCreateDialogAsync">
+                New Configuration
+            </MudButton>
+        </MudStack>
+
+        <MudTable Items="_configs" Dense="true" Hover="true" Striped="true"
+                  Elevation="0" Breakpoint="Breakpoint.Md" Class="rounded-0">
+            <HeaderContent>
+                <MudTh>Name</MudTh>
+                <MudTh>System A</MudTh>
+                <MudTh>System B</MudTh>
+                <MudTh Style="text-align: center;">Mappings</MudTh>
+                <MudTh Style="text-align: center;">Runs</MudTh>
+                <MudTh Style="text-align: center;">Status</MudTh>
+                <MudTh Style="text-align: center;">Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Name">
+                    <MudText Typo="Typo.body2" Style="font-weight: 500;">
+                        @context.ComparisonName
+                    </MudText>
+                </MudTd>
+                <MudTd DataLabel="System A">
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.body2" Class="font-mono" Style="font-size: 0.75rem;">
+                            @context.SystemA_Table
+                        </MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            Key: @context.MatchColumn_SystemA
+                        </MudText>
+                    </MudStack>
+                </MudTd>
+                <MudTd DataLabel="System B">
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.body2" Class="font-mono" Style="font-size: 0.75rem;">
+                            @context.SystemB_Table
+                        </MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            Key: @context.MatchColumn_SystemB
+                        </MudText>
+                    </MudStack>
+                </MudTd>
+                <MudTd DataLabel="Mappings" Style="text-align: center;">
+                    <MudTooltip Text="Manage field mappings">
+                        <MudChip T="string" Size="Size.Small"
+                                 Color="@(context.FieldMappingCount > 0 ? Color.Info : Color.Warning)"
+                                 Variant="Variant.Filled"
+                                 Icon="@Icons.Material.Filled.ListAlt"
+                                 OnClick="@(() => Nav.NavigateTo($"/configs/{context.Id}/mappings"))">
+                            @context.FieldMappingCount
+                        </MudChip>
+                    </MudTooltip>
+                </MudTd>
+                <MudTd DataLabel="Runs" Style="text-align: center;">
+                    <MudChip T="string" Size="Size.Small"
+                             Variant="@(context.RunCount > 0 ? Variant.Filled : Variant.Outlined)"
+                             Color="@(context.RunCount > 0 ? Color.Success : Color.Default)">
+                        @context.RunCount
+                    </MudChip>
+                </MudTd>
+                <MudTd DataLabel="Status" Style="text-align: center;">
+                    <MudSwitch T="bool"
+                               Value="@context.IsActive"
+                               ValueChanged="@(val => ToggleActiveAsync(context, val))"
+                               Color="Color.Success"
+                               UnCheckedColor="Color.Default" />
+                </MudTd>
+                <MudTd Style="text-align: center;">
+                    <MudStack Row="true" Spacing="0" Justify="Justify.Center">
+                        <MudTooltip Text="Field Mappings">
+                            <MudIconButton Icon="@Icons.Material.Filled.ListAlt"
+                                           Size="Size.Small"
+                                           Color="Color.Info"
+                                           OnClick="@(() => Nav.NavigateTo($"/configs/{context.Id}/mappings"))" />
+                        </MudTooltip>
+                        <MudTooltip Text="Edit">
+                            <MudIconButton Icon="@Icons.Material.Filled.Edit"
+                                           Size="Size.Small"
+                                           Color="Color.Primary"
+                                           OnClick="@(() => OpenEditDialogAsync(context))" />
+                        </MudTooltip>
+                        <MudTooltip Text="@(context.RunCount > 0 ? "Cannot delete — has runs" : "Delete")">
+                            <MudIconButton Icon="@Icons.Material.Filled.DeleteOutline"
+                                           Size="Size.Small"
+                                           Color="Color.Error"
+                                           Disabled="@(context.RunCount > 0)"
+                                           OnClick="@(() => ConfirmDeleteAsync(context))" />
+                        </MudTooltip>
+                    </MudStack>
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    </MudPaper>
+}
+
+@code {
+    private List<ComparisonConfigDto> _configs = [];
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadConfigsAsync();
+    }
+
+    private async Task LoadConfigsAsync()
+    {
+        _loading = true;
+        _configs = await ConfigService.GetAllAsync();
+        _loading = false;
+    }
+
+    private async Task OpenCreateDialogAsync()
+    {
+        var parameters = new DialogParameters<ConfigEditDialog>();
+        var options = new DialogOptions
+        {
+            MaxWidth = MaxWidth.Medium,
+            FullWidth = true,
+            CloseOnEscapeKey = true
+        };
+
+        var dialog = await DialogService.ShowAsync<ConfigEditDialog>("New Configuration", parameters, options);
+        var result = await dialog.Result;
+
+        if (result is not null && !result.Canceled)
+        {
+            await LoadConfigsAsync();
+        }
+    }
+
+    private async Task OpenEditDialogAsync(ComparisonConfigDto config)
+    {
+        var parameters = new DialogParameters<ConfigEditDialog>
+        {
+            { x => x.ConfigId, config.Id }
+        };
+        var options = new DialogOptions
+        {
+            MaxWidth = MaxWidth.Medium,
+            FullWidth = true,
+            CloseOnEscapeKey = true
+        };
+
+        var dialog = await DialogService.ShowAsync<ConfigEditDialog>("Edit Configuration", parameters, options);
+        var result = await dialog.Result;
+
+        if (result is not null && !result.Canceled)
+        {
+            await LoadConfigsAsync();
+        }
+    }
+
+    private async Task ToggleActiveAsync(ComparisonConfigDto config, bool newValue)
+    {
+        var result = await ConfigService.ToggleActiveAsync(config.Id, newValue);
+        if (result.IsSuccess)
+        {
+            Snackbar.Add(
+                $"\"{config.ComparisonName}\" {(newValue ? "activated" : "deactivated")}.",
+                newValue ? Severity.Success : Severity.Info);
+            await LoadConfigsAsync();
+        }
+        else
+        {
+            Snackbar.Add(result.Error!, Severity.Error);
+        }
+    }
+
+    private async Task ConfirmDeleteAsync(ComparisonConfigDto config)
+    {
+        var confirmation = await DialogService.ShowMessageBox(
+            "Delete Configuration",
+            $"Delete \"{config.ComparisonName}\" and all its field mappings? This cannot be undone.",
+            yesText: "Delete",
+            cancelText: "Cancel");
+
+        if (confirmation is true)
+        {
+            var result = await ConfigService.DeleteAsync(config.Id);
+            if (result.IsSuccess)
+            {
+                Snackbar.Add($"\"{config.ComparisonName}\" deleted.", Severity.Success);
+                await LoadConfigsAsync();
+            }
+            else
+            {
+                Snackbar.Add(result.Error!, Severity.Error);
+            }
+        }
+    }
+}

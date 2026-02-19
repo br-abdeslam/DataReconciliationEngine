@@ -1,0 +1,295 @@
+﻿@page "/configs/{ConfigId:int}/mappings"
+@using DataReconciliationEngine.Application.DTOs
+@using DataReconciliationEngine.Application.Interfaces
+@inject IComparisonConfigService ConfigService
+@inject IFieldMappingService MappingService
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject NavigationManager Nav
+
+<PageTitle>Field Mappings</PageTitle>
+
+@if (_config is null && !_loading)
+{
+    <MudPaper Class="pa-8 text-center" Elevation="1">
+        <MudIcon Icon="@Icons.Material.Filled.Error"
+                 Color="Color.Error"
+                 Style="font-size: 3rem; opacity: 0.5;" />
+        <MudText Typo="Typo.h6" Class="mt-2" Color="Color.Error">
+            Configuration not found
+        </MudText>
+        <MudButton Variant="Variant.Outlined"
+                   Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.ArrowBack"
+                   Class="mt-3"
+                   OnClick="@(() => Nav.NavigateTo("/configs"))">
+            Back to Configurations
+        </MudButton>
+    </MudPaper>
+}
+else
+{
+    @* ── Header ───────────────────────────────────────────── *@
+    <MudStack Spacing="1" Class="mb-4">
+        <MudButton Variant="Variant.Text"
+                   StartIcon="@Icons.Material.Filled.ArrowBack"
+                   OnClick="@(() => Nav.NavigateTo("/configs"))"
+                   Color="Color.Secondary"
+                   Size="Size.Small"
+                   Class="align-self-start">
+            Back to Configurations
+        </MudButton>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudIcon Icon="@Icons.Material.Filled.ListAlt"
+                     Color="Color.Info"
+                     Size="Size.Large" />
+            <MudText Typo="Typo.h4">Field Mappings</MudText>
+        </MudStack>
+    </MudStack>
+
+    @* ── Config info bar ──────────────────────────────────── *@
+    @if (_config is not null)
+    {
+        <MudPaper Class="pa-3 mb-4" Elevation="1" Style="border-left: 4px solid var(--mud-palette-info);">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3" Wrap="Wrap.Wrap">
+                <MudStack Spacing="0">
+                    <MudText Typo="Typo.subtitle1">@_config.ComparisonName</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        @_config.SystemA_Table → @_config.SystemB_Table
+                    </MudText>
+                </MudStack>
+                <MudDivider Vertical="true" FlexItem="true" Class="mx-1" />
+                <MudChip T="string" Size="Size.Small"
+                         Variant="@(_config.IsActive ? Variant.Filled : Variant.Outlined)"
+                         Color="@(_config.IsActive ? Color.Success : Color.Default)"
+                         Icon="@(_config.IsActive ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Cancel)">
+                    @(_config.IsActive ? "Active" : "Inactive")
+                </MudChip>
+                <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Info"
+                         Icon="@Icons.Material.Filled.ListAlt">
+                    @_mappings.Count mappings
+                </MudChip>
+                <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Success"
+                         Icon="@Icons.Material.Filled.CheckCircle">
+                    @_mappings.Count(m => m.IsActive) active
+                </MudChip>
+            </MudStack>
+        </MudPaper>
+    }
+
+    @if (_loading)
+    {
+        <MudPaper Class="pa-4" Elevation="1">
+            @for (var i = 0; i < 4; i++)
+            {
+                <MudSkeleton Class="mb-3" Height="40px" />
+            }
+        </MudPaper>
+    }
+    else if (_mappings.Count == 0)
+    {
+        @* ── Empty state ──────────────────────────────────── *@
+        <MudPaper Class="pa-8 text-center" Elevation="1">
+            <MudIcon Icon="@Icons.Material.Filled.AddLink"
+                     Color="Color.Secondary"
+                     Style="font-size: 4rem; opacity: 0.4;" />
+            <MudText Typo="Typo.h6" Class="mt-3" Color="Color.Secondary">
+                No field mappings yet
+            </MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+                The comparison engine requires at least one active mapping to run.
+            </MudText>
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.Add"
+                       OnClick="OpenCreateDialogAsync">
+                New Mapping
+            </MudButton>
+        </MudPaper>
+    }
+    else
+    {
+        @* ── Mappings table card ──────────────────────────── *@
+        <MudPaper Elevation="1">
+            <MudStack Row="true" AlignItems="AlignItems.Center"
+                      Justify="Justify.SpaceBetween" Class="pa-4 pb-0">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                    <MudIcon Icon="@Icons.Material.Filled.SwapHoriz" Color="Color.Secondary" Size="Size.Small" />
+                    <MudText Typo="Typo.h6">Column Mappings</MudText>
+                </MudStack>
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.Add"
+                           Size="Size.Small"
+                           OnClick="OpenCreateDialogAsync">
+                    New Mapping
+                </MudButton>
+            </MudStack>
+
+            <MudTable Items="_mappings" Dense="true" Hover="true" Striped="true"
+                      Elevation="0" Breakpoint="Breakpoint.Sm" Class="rounded-0">
+                <HeaderContent>
+                    <MudTh>Logical Field</MudTh>
+                    <MudTh>System A Column</MudTh>
+                    <MudTh Style="text-align: center; width: 40px;">
+                        <MudIcon Icon="@Icons.Material.Filled.SwapHoriz" Size="Size.Small" />
+                    </MudTh>
+                    <MudTh>System B Column</MudTh>
+                    <MudTh Style="width: 100px;">Status</MudTh>
+                    <MudTh Style="text-align: center;">Actions</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Logical Field">
+                        <MudText Typo="Typo.body2" Style="font-weight: 500;">
+                            @context.LogicalFieldName
+                        </MudText>
+                    </MudTd>
+                    <MudTd DataLabel="System A Column">
+                        <MudText Typo="Typo.body2" Class="font-mono" Style="font-size: 0.8rem;">
+                            @context.SystemA_Column
+                        </MudText>
+                    </MudTd>
+                    <MudTd Style="text-align: center;">
+                        <MudIcon Icon="@Icons.Material.Filled.ArrowForward"
+                                 Size="Size.Small" Color="Color.Secondary" />
+                    </MudTd>
+                    <MudTd DataLabel="System B Column">
+                        <MudText Typo="Typo.body2" Class="font-mono" Style="font-size: 0.8rem;">
+                            @context.SystemB_Column
+                        </MudText>
+                    </MudTd>
+                    <MudTd DataLabel="Status">
+                        <MudSwitch T="bool"
+                                   Value="@context.IsActive"
+                                   ValueChanged="@(val => ToggleActiveAsync(context, val))"
+                                   Color="Color.Success"
+                                   UnCheckedColor="Color.Default"
+                                   Style="margin: 0;" />
+                    </MudTd>
+                    <MudTd Style="text-align: center;">
+                        <MudStack Row="true" Spacing="0" Justify="Justify.Center">
+                            <MudTooltip Text="Edit">
+                                <MudIconButton Icon="@Icons.Material.Filled.Edit"
+                                               Size="Size.Small"
+                                               Color="Color.Primary"
+                                               OnClick="@(() => OpenEditDialogAsync(context))" />
+                            </MudTooltip>
+                            <MudTooltip Text="Delete">
+                                <MudIconButton Icon="@Icons.Material.Filled.DeleteOutline"
+                                               Size="Size.Small"
+                                               Color="Color.Error"
+                                               OnClick="@(() => ConfirmDeleteAsync(context))" />
+                            </MudTooltip>
+                        </MudStack>
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        </MudPaper>
+    }
+}
+
+@code {
+    [Parameter]
+    public int ConfigId { get; set; }
+
+    private ComparisonConfigDto? _config;
+    private List<FieldMappingDto> _mappings = [];
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _config = await ConfigService.GetByIdAsync(ConfigId);
+        await LoadMappingsAsync();
+    }
+
+    private async Task LoadMappingsAsync()
+    {
+        _loading = true;
+        _mappings = await MappingService.GetByConfigIdAsync(ConfigId);
+        _loading = false;
+    }
+
+    private async Task OpenCreateDialogAsync()
+    {
+        var parameters = new DialogParameters<MappingEditDialog>
+        {
+            { x => x.ConfigId, ConfigId }
+        };
+        var options = new DialogOptions
+        {
+            MaxWidth = MaxWidth.Medium,
+            FullWidth = true,
+            CloseOnEscapeKey = true
+        };
+
+        var dialog = await DialogService.ShowAsync<MappingEditDialog>("New Field Mapping", parameters, options);
+        var result = await dialog.Result;
+
+        if (result is not null && !result.Canceled)
+        {
+            await LoadMappingsAsync();
+        }
+    }
+
+    private async Task OpenEditDialogAsync(FieldMappingDto mapping)
+    {
+        var parameters = new DialogParameters<MappingEditDialog>
+        {
+            { x => x.ConfigId, ConfigId },
+            { x => x.MappingId, mapping.Id }
+        };
+        var options = new DialogOptions
+        {
+            MaxWidth = MaxWidth.Medium,
+            FullWidth = true,
+            CloseOnEscapeKey = true
+        };
+
+        var dialog = await DialogService.ShowAsync<MappingEditDialog>("Edit Field Mapping", parameters, options);
+        var result = await dialog.Result;
+
+        if (result is not null && !result.Canceled)
+        {
+            await LoadMappingsAsync();
+        }
+    }
+
+    private async Task ToggleActiveAsync(FieldMappingDto mapping, bool newValue)
+    {
+        var result = await MappingService.ToggleActiveAsync(mapping.Id, newValue);
+        if (result.IsSuccess)
+        {
+            Snackbar.Add(
+                $"\"{mapping.LogicalFieldName}\" {(newValue ? "activated" : "deactivated")}.",
+                newValue ? Severity.Success : Severity.Info);
+            await LoadMappingsAsync();
+        }
+        else
+        {
+            Snackbar.Add(result.Error!, Severity.Error);
+        }
+    }
+
+    private async Task ConfirmDeleteAsync(FieldMappingDto mapping)
+    {
+        var confirmation = await DialogService.ShowMessageBox(
+            "Delete Mapping",
+            $"Delete the \"{mapping.LogicalFieldName}\" mapping? This cannot be undone.",
+            yesText: "Delete",
+            cancelText: "Cancel");
+
+        if (confirmation is true)
+        {
+            var result = await MappingService.DeleteAsync(mapping.Id);
+            if (result.IsSuccess)
+            {
+                Snackbar.Add($"\"{mapping.LogicalFieldName}\" deleted.", Severity.Success);
+                await LoadMappingsAsync();
+            }
+            else
+            {
+                Snackbar.Add(result.Error!, Severity.Error);
+            }
+        }
+    }
+}

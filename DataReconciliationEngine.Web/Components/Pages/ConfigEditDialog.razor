@@ -1,0 +1,189 @@
+﻿@using DataReconciliationEngine.Application.DTOs
+@using DataReconciliationEngine.Application.Interfaces
+@inject IComparisonConfigService ConfigService
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.Settings" Class="mr-2" />
+            @(ConfigId is null ? "New Configuration" : "Edit Configuration")
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (_loadingEdit)
+        {
+            <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+        }
+        else
+        {
+            <MudForm @ref="_form" Model="_model" Validation="@(_validator.ValidateValue)">
+                <MudGrid Spacing="3">
+                    <MudItem xs="12">
+                        <MudTextField @bind-Value="_model.ComparisonName"
+                                      For="@(() => _model.ComparisonName)"
+                                      Label="Comparison Name"
+                                      Placeholder="e.g. Company vs MMg_Sites (Werfcode)"
+                                      Variant="Variant.Outlined"
+                                      Immediate="true" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudTextField @bind-Value="_model.SystemA_Table"
+                                      For="@(() => _model.SystemA_Table)"
+                                      Label="System A Table"
+                                      Placeholder="e.g. [PRO_BE01].[dbo].[Company]"
+                                      Variant="Variant.Outlined"
+                                      Immediate="true" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudTextField @bind-Value="_model.SystemB_Table"
+                                      For="@(() => _model.SystemB_Table)"
+                                      Label="System B Table"
+                                      Placeholder="e.g. [Company].[dbo].[MMg_Sites]"
+                                      Variant="Variant.Outlined"
+                                      Immediate="true" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudTextField @bind-Value="_model.MatchColumn_SystemA"
+                                      For="@(() => _model.MatchColumn_SystemA)"
+                                      Label="Match Column A"
+                                      Placeholder="e.g. Werfcode"
+                                      Variant="Variant.Outlined"
+                                      Immediate="true" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudTextField @bind-Value="_model.MatchColumn_SystemB"
+                                      For="@(() => _model.MatchColumn_SystemB)"
+                                      Label="Match Column B"
+                                      Placeholder="e.g. Werfcode"
+                                      Variant="Variant.Outlined"
+                                      Immediate="true" />
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudSwitch @bind-Value="_model.IsActive"
+                                   Label="Active"
+                                   Color="Color.Success" />
+                    </MudItem>
+                </MudGrid>
+            </MudForm>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Variant="Variant.Text">Cancel</MudButton>
+        <MudButton OnClick="SaveAsync"
+                   Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   Disabled="_saving">
+            @if (_saving)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                @:Saving…
+            }
+            else
+            {
+                @:Save
+            }
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter]
+    public int? ConfigId { get; set; }
+
+    private MudForm _form = null!;
+    private ComparisonConfigEditDto _model = new();
+    private readonly DataAnnotationsValidator _validator = new();
+    private bool _saving;
+    private bool _loadingEdit;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (ConfigId is not null)
+        {
+            _loadingEdit = true;
+            var existing = await ConfigService.GetByIdAsync(ConfigId.Value);
+            if (existing is not null)
+            {
+                _model = new ComparisonConfigEditDto
+                {
+                    ComparisonName = existing.ComparisonName,
+                    SystemA_Table = existing.SystemA_Table,
+                    SystemB_Table = existing.SystemB_Table,
+                    MatchColumn_SystemA = existing.MatchColumn_SystemA,
+                    MatchColumn_SystemB = existing.MatchColumn_SystemB,
+                    IsActive = existing.IsActive
+                };
+            }
+            _loadingEdit = false;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private async Task SaveAsync()
+    {
+        await _form.Validate();
+        if (!_form.IsValid) return;
+
+        _saving = true;
+
+        try
+        {
+            if (ConfigId is null)
+            {
+                var result = await ConfigService.CreateAsync(_model);
+                if (result.IsSuccess)
+                {
+                    Snackbar.Add($"Configuration \"{_model.ComparisonName}\" created.", Severity.Success);
+                    MudDialog.Close(DialogResult.Ok(true));
+                }
+                else
+                {
+                    Snackbar.Add(result.Error!, Severity.Error);
+                }
+            }
+            else
+            {
+                var result = await ConfigService.UpdateAsync(ConfigId.Value, _model);
+                if (result.IsSuccess)
+                {
+                    Snackbar.Add($"Configuration \"{_model.ComparisonName}\" updated.", Severity.Success);
+                    MudDialog.Close(DialogResult.Ok(true));
+                }
+                else
+                {
+                    Snackbar.Add(result.Error!, Severity.Error);
+                }
+            }
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    /// <summary>
+    /// Adapter to use DataAnnotations validation with MudForm.
+    /// </summary>
+    private sealed class DataAnnotationsValidator
+    {
+        public Func<object, string, Task<IEnumerable<string>>> ValidateValue =>
+            async (model, propertyName) =>
+            {
+                var context = new System.ComponentModel.DataAnnotations.ValidationContext(model)
+                {
+                    MemberName = propertyName
+                };
+                var results = new List<System.ComponentModel.DataAnnotations.ValidationResult>();
+                System.ComponentModel.DataAnnotations.Validator.TryValidateProperty(
+                    model.GetType().GetProperty(propertyName)?.GetValue(model),
+                    context,
+                    results);
+                return await Task.FromResult(results.Select(r => r.ErrorMessage ?? string.Empty));
+            };
+    }
+}

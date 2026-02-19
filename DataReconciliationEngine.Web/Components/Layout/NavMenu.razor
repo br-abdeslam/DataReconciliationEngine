@@ -1,0 +1,58 @@
+﻿<div class="nav-wrapper">
+    @* ── Main Section ──────────────────────────────────── *@
+    <MudNavMenu Bordered="true" Color="Color.Primary" Class="pa-2">
+        <MudText Typo="Typo.overline"
+                 Class="px-3 mt-2 mb-1"
+                 Style="@(!DrawerOpen ? "display:none;" : "")">
+            Main
+        </MudText>
+
+        <MudNavLink Href="/"
+                    Match="NavLinkMatch.All"
+                    Icon="@Icons.Material.Filled.Dashboard"
+                    IconColor="Color.Primary">
+            Dashboard
+        </MudNavLink>
+
+        <MudDivider Class="my-2" />
+
+        <MudText Typo="Typo.overline"
+                 Class="px-3 mt-2 mb-1"
+                 Style="@(!DrawerOpen ? "display:none;" : "")">
+            Management
+        </MudText>
+
+        <MudNavLink Href="/configs"
+                    Match="NavLinkMatch.Prefix"
+                    Icon="@Icons.Material.Filled.Tune"
+                    IconColor="Color.Secondary">
+            Configurations
+        </MudNavLink>
+    </MudNavMenu>
+
+    @* ── Bottom info (visible when drawer is open) ──── *@
+    @if (DrawerOpen)
+    {
+        <div class="nav-footer">
+            <MudDivider Class="mb-2" />
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="px-3 pb-3">
+                <MudIcon Icon="@Icons.Material.Filled.Storage"
+                         Size="Size.Small"
+                         Color="Color.Tertiary" />
+                <MudStack Spacing="0">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        LocalDB
+                    </MudText>
+                    <MudText Typo="Typo.caption" Style="font-size: 0.65rem; opacity: 0.6;">
+                        ReconciliationLocalDb
+                    </MudText>
+                </MudStack>
+            </MudStack>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public bool DrawerOpen { get; set; }
+}

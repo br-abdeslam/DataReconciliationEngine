@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="../DataReconciliationEngine.Application/DataReconciliationEngine.Application.csproj" />
+  <Project Path="../DataReconciliationEngine.Domain/DataReconciliationEngine.Domain.csproj" />
+  <Project Path="../DataReconciliationEngine.Infrastructure/DataReconciliationEngine.Infrastructure.csproj" />
+  <Project Path="DataReconciliationEngine.Web.csproj" />
+</Solution>
