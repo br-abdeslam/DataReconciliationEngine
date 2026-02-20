@@ -1,0 +1,209 @@
+﻿@page "/duplicates/customer-sites"
+@using DataReconciliationEngine.Application.DTOs
+@using DataReconciliationEngine.Application.Interfaces
+@inject ICustomerSitesDuplicateDetector Detector
+@inject IDuplicateQueryService QueryService
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject NavigationManager Nav
+
+<PageTitle>Duplicate Customer Sites</PageTitle>
+
+@* ── Hero Header ────────────────────────────────────────────── *@
+<MudStack Spacing="1" Class="mb-5">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+        <MudIcon Icon="@Icons.Material.Filled.ContentCopy"
+                 Color="Color.Primary"
+                 Size="Size.Large" />
+        <MudText Typo="Typo.h4">Duplicate Customer Sites</MudText>
+    </MudStack>
+    <MudText Typo="Typo.body2" Color="Color.Secondary">
+        Detect duplicate rows in customer_sites grouped by Group_ID + Location.
+    </MudText>
+</MudStack>
+
+@* ── Toolbar ────────────────────────────────────────────────── *@
+<MudPaper Class="pa-4 mb-5" Elevation="1">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.PlayArrow"
+                   Disabled="_isRunning"
+                   OnClick="RunDetectionAsync"
+                   Size="Size.Large">
+            @if (_isRunning)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                @:Running…
+            }
+            else
+            {
+                @:Run Duplicate Detection
+            }
+        </MudButton>
+    </MudStack>
+</MudPaper>
+
+@* ── Latest Run KPI Cards ───────────────────────────────────── *@
+@if (_latestRun is not null)
+{
+    <MudText Typo="Typo.subtitle2" Color="Color.Secondary" Class="mb-2">
+        Latest Run — #@_latestRun.RunId · @_latestRun.RunDate.ToLocalTime().ToString("g")
+    </MudText>
+
+    <MudGrid Class="mb-4">
+        <MudItem xs="12" sm="4">
+            <MudPaper Class="pa-4" Elevation="1" Style="border-left: 4px solid var(--mud-palette-primary);">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                    <MudAvatar Color="Color.Primary" Variant="Variant.Outlined" Size="Size.Large">
+                        <MudIcon Icon="@Icons.Material.Filled.Storage" />
+                    </MudAvatar>
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.h5">@_latestRun.TotalRowsScanned.ToString("N0")</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Rows Scanned</MudText>
+                    </MudStack>
+                </MudStack>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudPaper Class="pa-4" Elevation="1" Style="border-left: 4px solid var(--mud-palette-warning);">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                    <MudAvatar Color="Color.Warning" Variant="Variant.Outlined" Size="Size.Large">
+                        <MudIcon Icon="@Icons.Material.Filled.ContentCopy" />
+                    </MudAvatar>
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.h5" Color="Color.Warning">@_latestRun.DuplicateGroupsFound.ToString("N0")</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Duplicate Groups</MudText>
+                    </MudStack>
+                </MudStack>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudPaper Class="pa-4" Elevation="1" Style="border-left: 4px solid var(--mud-palette-error);">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                    <MudAvatar Color="Color.Error" Variant="Variant.Outlined" Size="Size.Large">
+                        <MudIcon Icon="@Icons.Material.Filled.FileCopy" />
+                    </MudAvatar>
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.h5" Color="Color.Error">@_latestRun.TotalDuplicateRecords.ToString("N0")</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Total Duplicate Records</MudText>
+                    </MudStack>
+                </MudStack>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <MudButton Variant="Variant.Filled" Color="Color.Primary"
+               StartIcon="@Icons.Material.Filled.TableChart" Class="mb-5"
+               OnClick="@(() => Nav.NavigateTo($"/duplicates/customer-sites/{_latestRun.RunId}"))">
+        View Results for Run #@_latestRun.RunId
+    </MudButton>
+}
+
+@* ── Run History ────────────────────────────────────────────── *@
+@if (_runs.Count > 0)
+{
+    <MudPaper Elevation="1">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="pa-4 pb-0">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                <MudIcon Icon="@Icons.Material.Filled.History" Color="Color.Secondary" Size="Size.Small" />
+                <MudText Typo="Typo.h6">Run History</MudText>
+            </MudStack>
+            <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Color="Color.Default">@_runs.Count runs</MudChip>
+        </MudStack>
+
+        <MudTable Items="_runs" Dense="true" Hover="true" Striped="true" Elevation="0" Class="rounded-0">
+            <HeaderContent>
+                <MudTh>Run</MudTh>
+                <MudTh>Date</MudTh>
+                <MudTh Style="text-align:right;">Rows Scanned</MudTh>
+                <MudTh Style="text-align:right;">Groups</MudTh>
+                <MudTh Style="text-align:right;">Duplicate Records</MudTh>
+                <MudTh Style="text-align:center;">Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd><MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary">#@context.RunId</MudChip></MudTd>
+                <MudTd><MudText Typo="Typo.body2">@context.RunDate.ToLocalTime().ToString("g")</MudText></MudTd>
+                <MudTd Style="text-align:right;">@context.TotalRowsScanned.ToString("N0")</MudTd>
+                <MudTd Style="text-align:right;">
+                    <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Filled">@context.DuplicateGroupsFound.ToString("N0")</MudChip>
+                </MudTd>
+                <MudTd Style="text-align:right;">
+                    <MudChip T="string" Size="Size.Small" Color="Color.Error" Variant="Variant.Filled">@context.TotalDuplicateRecords.ToString("N0")</MudChip>
+                </MudTd>
+                <MudTd Style="text-align:center;">
+                    <MudStack Row="true" Spacing="0" Justify="Justify.Center">
+                        <MudTooltip Text="View Results">
+                            <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" Color="Color.Primary"
+                                           OnClick="@(() => Nav.NavigateTo($"/duplicates/customer-sites/{context.RunId}"))" />
+                        </MudTooltip>
+                        <MudTooltip Text="Delete Run">
+                            <MudIconButton Icon="@Icons.Material.Filled.DeleteOutline" Size="Size.Small" Color="Color.Error"
+                                           OnClick="@(() => ConfirmDeleteAsync(context))" />
+                        </MudTooltip>
+                    </MudStack>
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    </MudPaper>
+}
+else if (!_isRunning)
+{
+    <MudPaper Class="pa-8 text-center" Elevation="1">
+        <MudIcon Icon="@Icons.Material.Filled.ContentCopy" Color="Color.Secondary" Size="Size.Large" Style="font-size: 4rem; opacity: 0.4;" />
+        <MudText Typo="Typo.h6" Class="mt-3" Color="Color.Secondary">No runs yet</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">Click "Run Duplicate Detection" to scan for duplicates.</MudText>
+    </MudPaper>
+}
+
+@code {
+    private List<DuplicateRunSummaryDto> _runs = [];
+    private DuplicateRunSummaryDto? _latestRun;
+    private bool _isRunning;
+
+    protected override async Task OnInitializedAsync()
+        => await LoadRunsAsync();
+
+    private async Task LoadRunsAsync()
+    {
+        _runs = await QueryService.GetLastRunsAsync();
+        _latestRun = _runs.FirstOrDefault();
+    }
+
+    private async Task RunDetectionAsync()
+    {
+        _isRunning = true;
+        try
+        {
+            var summary = await Detector.RunDetectionAsync();
+            Snackbar.Add(
+                $"Detection complete! Run #{summary.RunId} — {summary.DuplicateGroupsFound:N0} groups, {summary.TotalDuplicateRecords:N0} duplicate records.",
+                Severity.Success);
+            await LoadRunsAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isRunning = false;
+        }
+    }
+
+    private async Task ConfirmDeleteAsync(DuplicateRunSummaryDto run)
+    {
+        var result = await DialogService.ShowMessageBox(
+            "Delete Run",
+            $"Delete duplicate detection Run #{run.RunId} and all its data? This cannot be undone.",
+            yesText: "Delete", cancelText: "Cancel");
+
+        if (result is true)
+        {
+            var deleted = await QueryService.DeleteRunAsync(run.RunId);
+            Snackbar.Add(deleted ? $"Run #{run.RunId} deleted." : $"Run #{run.RunId} not found.",
+                deleted ? Severity.Success : Severity.Warning);
+            await LoadRunsAsync();
+        }
+    }
+}

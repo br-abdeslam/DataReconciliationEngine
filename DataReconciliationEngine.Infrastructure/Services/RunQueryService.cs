@@ -41,12 +41,12 @@ public sealed class RunQueryService : IRunQueryService
             .Take(take)
             .Join(
                 _db.TableComparisonConfigurations,
-                r => r.ComparisonConfigId,
+                r => r.ComparisonConfigId!.Value,   // int? → int (safe: filtered above)
                 c => c.Id,
                 (r, c) => new RunSummaryDto
                 {
                     RunId = r.Id,
-                    ComparisonConfigId = r.ComparisonConfigId,
+                    ComparisonConfigId = r.ComparisonConfigId!.Value,
                     ComparisonName = c.ComparisonName,
                     RunDate = r.RunDate,
                     TotalRecords = r.TotalRecords,
@@ -64,12 +64,12 @@ public sealed class RunQueryService : IRunQueryService
             .Where(r => r.Id == runId)
             .Join(
                 _db.TableComparisonConfigurations,
-                r => r.ComparisonConfigId,
+                r => r.ComparisonConfigId!.Value,   // int? → int (comparison runs always have config)
                 c => c.Id,
                 (r, c) => new RunSummaryDto
                 {
                     RunId = r.Id,
-                    ComparisonConfigId = r.ComparisonConfigId,
+                    ComparisonConfigId = r.ComparisonConfigId!.Value,
                     ComparisonName = c.ComparisonName,
                     RunDate = r.RunDate,
                     TotalRecords = r.TotalRecords,

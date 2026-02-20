@@ -1,4 +1,5 @@
 ﻿using DataReconciliationEngine.Domain.Entities;
+using DataReconciliationEngine.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -10,16 +11,25 @@ public class ComparisonRunConfiguration : IEntityTypeConfiguration<ComparisonRun
     {
         builder.HasKey(r => r.Id);
 
-        // ── Foreign key: ComparisonConfigId → TableComparisonConfigurations ─
+        // ── RunType (defaults to Comparison for all existing rows) ──
+        builder.Property(r => r.RunType)
+            .HasDefaultValue(RunType.Comparison)
+            .IsRequired();
+
+        // ── FK: now OPTIONAL (null for non-comparison run types) ──
         builder.HasOne<TableComparisonConfiguration>()
             .WithMany()
             .HasForeignKey(r => r.ComparisonConfigId)
-            .OnDelete(DeleteBehavior.Restrict);
+            .OnDelete(DeleteBehavior.Restrict)
+            .IsRequired(false);
 
-        // ── Index: GetLastRunsAsync filters by ConfigId, sorts by RunDate DESC ─
-        // This covers: WHERE ComparisonConfigId = @id ORDER BY RunDate DESC
+        // ── Indexes ──
         builder.HasIndex(r => new { r.ComparisonConfigId, r.RunDate })
             .HasDatabaseName("IX_ComparisonRuns_ConfigId_RunDate")
-            .IsDescending(false, true); // ConfigId ASC, RunDate DESC
+            .IsDescending(false, true);
+
+        builder.HasIndex(r => new { r.RunType, r.RunDate })
+            .HasDatabaseName("IX_ComparisonRuns_RunType_RunDate")
+            .IsDescending(false, true);
     }
 }

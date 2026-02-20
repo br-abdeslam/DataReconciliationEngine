@@ -12,16 +12,19 @@ namespace DataReconciliationEngine.Infrastructure.Persistence.Contexts
     {
         public ReconciliationDbContext(DbContextOptions<ReconciliationDbContext> options) : base(options) { }
 
+        // ── Comparison ──
         public DbSet<TableComparisonConfiguration> TableComparisonConfigurations => Set<TableComparisonConfiguration>();
         public DbSet<FieldMappingConfiguration> FieldMappingConfigurations => Set<FieldMappingConfiguration>();
         public DbSet<ComparisonRun> ComparisonRuns => Set<ComparisonRun>();
         public DbSet<ComparisonResult> ComparisonResults => Set<ComparisonResult>();
 
+        // ── Duplicate detection ──
+        public DbSet<DuplicateGroup> DuplicateGroups => Set<DuplicateGroup>();
+        public DbSet<DuplicateRecord> DuplicateRecords => Set<DuplicateRecord>();
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
-            // Applique toutes les configurations EF Core (si tu en crées)
             modelBuilder.ApplyConfigurationsFromAssembly(typeof(ReconciliationDbContext).Assembly);
-
             base.OnModelCreating(modelBuilder);
         }
     }

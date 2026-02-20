@@ -1,0 +1,278 @@
+﻿@page "/duplicates/customer-sites/{RunId:int}"
+@using DataReconciliationEngine.Application.DTOs
+@using DataReconciliationEngine.Application.Interfaces
+@inject IDuplicateQueryService QueryService
+@inject IDuplicateExportService ExportService
+@inject ISnackbar Snackbar
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<PageTitle>Duplicate Results — Run #@RunId</PageTitle>
+
+@* ── Header ─────────────────────────────────────────────────── *@
+<MudStack Spacing="1" Class="mb-4">
+    <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.ArrowBack"
+               OnClick="@(() => Nav.NavigateTo("/duplicates/customer-sites"))"
+               Color="Color.Secondary" Size="Size.Small" Class="align-self-start">
+        Back to Duplicate Dashboard
+    </MudButton>
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+        <MudIcon Icon="@Icons.Material.Filled.ContentCopy" Color="Color.Primary" Size="Size.Large" />
+        <MudText Typo="Typo.h4">Duplicate Results — Run #@RunId</MudText>
+    </MudStack>
+</MudStack>
+
+@* ── Summary Bar ────────────────────────────────────────────── *@
+@if (_summary is not null)
+{
+    <MudPaper Class="pa-3 mb-4" Elevation="1" Style="border-left: 4px solid var(--mud-palette-primary);">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3" Wrap="Wrap.Wrap">
+            <MudStack Spacing="0">
+                <MudText Typo="Typo.subtitle1">Customer Sites Duplicate Detection</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">@_summary.RunDate.ToLocalTime().ToString("g")</MudText>
+            </MudStack>
+            <MudDivider Vertical="true" FlexItem="true" Class="mx-1" />
+            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary"
+                     Icon="@Icons.Material.Filled.Storage">@_summary.TotalRowsScanned.ToString("N0") scanned</MudChip>
+            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Warning"
+                     Icon="@Icons.Material.Filled.ContentCopy">@_summary.DuplicateGroupsFound.ToString("N0") groups</MudChip>
+            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Error"
+                     Icon="@Icons.Material.Filled.FileCopy">@_summary.TotalDuplicateRecords.ToString("N0") records</MudChip>
+            <MudSpacer />
+            <MudMenu Label="Export CSV" StartIcon="@Icons.Material.Filled.Download"
+                     Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small">
+                <MudMenuItem OnClick="ExportGroupsAsync">Groups (summary)</MudMenuItem>
+                <MudMenuItem OnClick="ExportRecordsAsync">Records (full detail)</MudMenuItem>
+            </MudMenu>
+        </MudStack>
+    </MudPaper>
+}
+
+@* ── Filters ───────────────────────────────────────────────── *@
+<MudPaper Class="pa-3 mb-4" Elevation="1">
+    <MudGrid>
+        <MudItem xs="12" sm="6" md="4">
+            <MudTextField T="string"
+                          @bind-Value="_groupSearch"
+                          Label="Group ID / Candidate Key"
+                          Variant="Variant.Outlined"
+                          Immediate="false"
+                          DebounceInterval="400"
+                          OnDebounceIntervalElapsed="OnFiltersChanged" />
+        </MudItem>
+        <MudItem xs="6" sm="3" md="2">
+            <MudNumericField T="int?"
+                             @bind-Value="_minGroupSize"
+                             Label="Min group size"
+                             Variant="Variant.Outlined"
+                             Min="2" />
+        </MudItem>
+        <MudItem xs="6" sm="3" md="2">
+            <MudNumericField T="int?"
+                             @bind-Value="_customerSitesId"
+                             Label="Customer Site ID"
+                             Variant="Variant.Outlined"
+                             Min="1" />
+        </MudItem>
+        <MudItem xs="12" sm="12" md="2" Class="d-flex align-center">
+            <MudButton Variant="Variant.Outlined"
+                       StartIcon="@Icons.Material.Filled.FilterAlt"
+                       OnClick="OnFiltersChanged"
+                       Size="Size.Small">
+                Apply
+            </MudButton>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@* ── Groups Table (server-side paged) ───────────────────────── *@
+@if (_initialized)
+{
+    <MudTable @ref="_table" T="DuplicateGroupDto" ServerData="LoadGroupsAsync"
+              Dense="true" Hover="true" Striped="true" Elevation="1"
+              RowsPerPage="25" OnRowClick="OnGroupClicked" RowClass="cursor-pointer">
+        <HeaderContent>
+            <MudTh><MudTableSortLabel T="DuplicateGroupDto" SortLabel="RecordsCount">Count</MudTableSortLabel></MudTh>
+            <MudTh><MudTableSortLabel T="DuplicateGroupDto" SortLabel="GroupId">Group ID</MudTableSortLabel></MudTh>
+            <MudTh>Lat / Lon</MudTh>
+            <MudTh>Candidate Key</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Count">
+                <MudChip T="string" Size="Size.Small" Color="@(context.RecordsCount >= 5 ? Color.Error : Color.Warning)"
+                         Variant="Variant.Filled">@context.RecordsCount</MudChip>
+            </MudTd>
+            <MudTd DataLabel="Group ID">
+                <MudText Typo="Typo.body2" Style="font-family: monospace; font-size: 0.75rem;">
+                    @(context.GroupId?.ToString()[..8] ?? "—")…
+                </MudText>
+            </MudTd>
+            <MudTd DataLabel="Lat / Lon">
+                <MudText Typo="Typo.body2">@context.LatRound / @context.LonRound</MudText>
+            </MudTd>
+            <MudTd DataLabel="Candidate Key">
+                <MudText Typo="Typo.body2" Style="font-family: monospace; font-size: 0.7rem; max-width: 300px; overflow: hidden; text-overflow: ellipsis;">
+                    @context.CandidateKey
+                </MudText>
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>No duplicate groups found for this run.</MudText>
+        </NoRecordsContent>
+        <PagerContent>
+            <MudTablePager PageSizeOptions="new[] { 25, 50, 100 }" />
+        </PagerContent>
+    </MudTable>
+}
+else
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+
+@* ── Detail Drawer ──────────────────────────────────────────── *@
+<MudDrawer @bind-Open="_drawerOpen" Anchor="Anchor.End" Elevation="2"
+           Width="700px" Variant="DrawerVariant.Temporary">
+    <MudDrawerHeader>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Class="flex-grow-1">
+            <MudText Typo="Typo.h6">Group: @_detailGroupId?.ToString()[..8]…</MudText>
+            <MudSpacer />
+            <MudIconButton Icon="@Icons.Material.Filled.Close" OnClick="@(() => _drawerOpen = false)" />
+        </MudStack>
+    </MudDrawerHeader>
+    <MudContainer Class="pa-4">
+        @if (_detailRecords.Count == 0)
+        {
+            <MudProgressCircular Indeterminate="true" />
+        }
+        else
+        {
+            <MudSimpleTable Dense="true" Hover="true" Striped="true" Elevation="0" Style="font-size: 0.8rem;">
+                <thead>
+                    <tr>
+                        <th>Site ID</th>
+                        <th>Street</th>
+                        <th>Nr / Box</th>
+                        <th>Zip</th>
+                        <th>City</th>
+                        <th>Score</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var r in _detailRecords)
+                    {
+                        <tr style="@(r.IsMasterSuggested ? "background: rgba(76,175,80,0.08);" : "")">
+                            <td><b>@r.CustomerSitesId</b></td>
+                            <td>
+                                <MudStack Spacing="0">
+                                    <span style="text-decoration: line-through; opacity: 0.5;">@(r.StreetRaw ?? "—")</span>
+                                    <span><b>@(r.StreetNorm ?? "—")</b></span>
+                                </MudStack>
+                            </td>
+                            <td>
+                                <MudStack Spacing="0">
+                                    <span style="text-decoration: line-through; opacity: 0.5;">@(r.NumberRaw ?? "—") / @(r.BoxRaw ?? "—")</span>
+                                    <span><b>@(r.NumberNorm ?? "—") / @(r.BoxNorm ?? "—")</b></span>
+                                </MudStack>
+                            </td>
+                            <td>@(r.ZipNorm ?? r.ZipRaw ?? "—")</td>
+                            <td>@(r.CityNorm ?? r.CityRaw ?? "—")</td>
+                            <td>
+                                <MudChip T="string" Size="Size.Small"
+                                         Color="@(r.CompletenessScore >= 80 ? Color.Success : r.CompletenessScore >= 50 ? Color.Warning : Color.Error)"
+                                         Variant="Variant.Filled">@r.CompletenessScore</MudChip>
+                            </td>
+                            <td>
+                                @if (r.IsMasterSuggested)
+                                {
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Outlined"
+                                             Icon="@Icons.Material.Filled.Star">Master</MudChip>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </MudSimpleTable>
+        }
+    </MudContainer>
+</MudDrawer>
+
+@code {
+    [Parameter] public int RunId { get; set; }
+
+    private MudTable<DuplicateGroupDto>? _table;
+    private DuplicateRunSummaryDto? _summary;
+    private bool _initialized;
+
+    // Filters
+    private string? _groupSearch;
+    private int? _minGroupSize = 2;
+    private int? _customerSitesId;
+
+    // Detail drawer
+    private bool _drawerOpen;
+    private Guid? _detailGroupId;
+    private List<DuplicateRecordDto> _detailRecords = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        _summary = await QueryService.GetRunSummaryAsync(RunId);
+        _initialized = true;
+    }
+
+    private async Task<TableData<DuplicateGroupDto>> LoadGroupsAsync(TableState state, CancellationToken ct)
+    {
+        var result = await QueryService.GetGroupsPageAsync(
+            RunId, state.Page, state.PageSize,
+            state.SortLabel, state.SortDirection == SortDirection.Descending,
+            _minGroupSize, _groupSearch, _customerSitesId, ct);
+
+        return new TableData<DuplicateGroupDto>
+        {
+            Items = result.Items,
+            TotalItems = result.TotalCount
+        };
+    }
+
+    private async Task OnGroupClicked(TableRowClickEventArgs<DuplicateGroupDto> args)
+    {
+        if (args.Item is null) return;
+
+        _detailGroupId = args.Item.GroupId;
+        _detailRecords = [];
+        _drawerOpen = true;
+
+        _detailRecords = await QueryService.GetRecordsForGroupAsync(args.Item.Id);
+        StateHasChanged();
+    }
+
+    private async Task OnFiltersChanged()
+    {
+        if (_table is not null)
+            await _table.ReloadServerData();
+    }
+
+    private async Task ExportGroupsAsync()
+    {
+        try
+        {
+            var file = await ExportService.ExportGroupsCsvAsync(RunId);
+            var base64 = Convert.ToBase64String(file.Content);
+            await JS.InvokeVoidAsync("downloadFile", file.FileName, file.ContentType, base64);
+            Snackbar.Add("Groups CSV downloaded.", Severity.Success);
+        }
+        catch (Exception ex) { Snackbar.Add($"Export error: {ex.Message}", Severity.Error); }
+    }
+
+    private async Task ExportRecordsAsync()
+    {
+        try
+        {
+            var file = await ExportService.ExportRecordsCsvAsync(RunId);
+            var base64 = Convert.ToBase64String(file.Content);
+            await JS.InvokeVoidAsync("downloadFile", file.FileName, file.ContentType, base64);
+            Snackbar.Add("Records CSV downloaded.", Severity.Success);
+        }
+        catch (Exception ex) { Snackbar.Add($"Export error: {ex.Message}", Severity.Error); }
+    }
+}

@@ -101,6 +101,10 @@ internal class Program
         builder.Services.AddScoped<IComparisonConfigService, ComparisonConfigService>();
         builder.Services.AddScoped<IFieldMappingService, FieldMappingService>();
         builder.Services.AddScoped<IResultExportService, ResultExportService>();
+        builder.Services.AddScoped<ICustomerSitesDuplicateDetector, CustomerSitesDuplicateDetector>();
+        builder.Services.AddScoped<IDuplicateQueryService, DuplicateQueryService>();
+        builder.Services.AddScoped<IDuplicateExportService, DuplicateExportService>();
+
 
         builder.Services.AddMudServices();
 
